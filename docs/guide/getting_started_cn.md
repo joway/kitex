@@ -2,167 +2,37 @@
 
 在完成环境准备后，本章节讲帮助你快速上手 Kitex
 
-## 快速上手
+## 快速体验
 
 ### 获取示例代码
 
-1. 你可以直接点击此处（TODO）下载示例仓库
-2. 也可以克隆该示例仓库到本地 `git clone -b v0.0.1 https://github.com/cloudwego/examples.git`
+克隆示例仓库到本地: 
+
+```bash
+git clone -b v0.0.1 https://github.com/cloudwego/kitex-examples.git
+```
 
 ### 运行示例代码
 
 1. 进入示例仓库的 `hello` 目录
+    ```bash
+    cd kitex-examples/hello
+    ```
 
-`cd examples/hello`
+2. 编译项目
+    ```bash
+    docker build -t kitex-examples .
+    ```
 
-2. 运行server
+3. 运行 server
+    ```bash
+    docker run --network host kitex-examples hello-server
+    ```
 
-`go run .`
-
-3. 运行client
-
-另起一个终端后，`go run ./client`
-
-
-
-恭喜你，你现在成功通过 Kitex 发起了 RPC 调用。
-
-### 增加一个新的方法
-
-打开 `hello.thrift`，你会看到如下内容：
-
-```thrift
-namespace go api
-
-struct Request {
-        1: string message
-}
-
-struct Response {
-        1: string message
-}
-
-service Hello {
-    Response echo(1: Request req)
-}
-```
-
-现在让我们为新方法分别定义一个新的请求和响应，`AddRequest` 和 `AddResponse`，并在 `service Hello` 中增加 `add` 方法：
-
-```thrift
-namespace go api
-
-struct Request {
-        1: string message
-}
-
-struct Response {
-        1: string message
-}
-
-struct AddRequest {
-	1: i64 first
-	2: i64 second
-}
-
-struct AddResponse {
-	1: i64 sum
-}
-
-service Hello {
-    Response echo(1: Request req)
-    AddResponse add(1: AddRequest req)
-}
-```
-
-完成之后 `hello.thrift` 的内容应该和上面一样。
-
-### 重新生成代码
-
-运行如下命令后，`kitex` 工具将根据 `hello.thrift` 更新代码文件。
-
-`kitex -service a.b.c hello.thrift`
-
-执行完上述命令后，`kitex` 工具将更新下述文件
-
-	1. 更新`./handler.go`，在里面增加一个`Add`方法的基本实现
-	2. 更新`./kitex_gen`，里面有框架运行所必须的代码文件
-
-### 更新服务端处理逻辑
-
-上述步骤完成后，`./handler.go` 中会自动补全一个 `Add` 方法的基本实现，类似如下代码：
-
-```go
-// Add implements the HelloImpl interface.
-func (s *HelloImpl) Add(ctx context.Context, req *api.AddRequest) (resp *api.AddResponse, err error) {
-        // TODO: Your code here...
-        return
-}
-```
-
-让我们在里面增加我们所需要的逻辑，类似如下代码：
-
-```go
-// Add implements the HelloImpl interface.
-func (s *HelloImpl) Add(ctx context.Context, req *api.AddRequest) (resp *api.AddResponse, err error) {
-        // TODO: Your code here...
-        resp = &api.AddResponse{Result_: req.First + req.Second}
-        return
-}
-```
-
-### 增加客户端调用
-
-服务端已经有了 `Add` 方法的处理，现在让我们在客户端增加对 `Add` 方法的调用。
-
-在 `./client/main.go` 中你会看到类似如下的 `for` 循环：
-
-```go
-for {
-        req := &api.Request{Message: "my request"}
-        resp, err := client.Echo(context.Background(), req)
-        if err != nil {
-                log.Fatal(err)
-        }
-        log.Println(resp)
-        time.Sleep(time.Second)
-}
-```
-
-现在让我们在里面增加 `Add` 方法的调用：
-
-```go
-for {
-        req := &api.Request{Message: "my request"}
-        resp, err := client.Echo(context.Background(), req)
-        if err != nil {
-                log.Fatal(err)
-        }
-        log.Println(resp)
-        time.Sleep(time.Second)
-  			addReq := &api.AddRequest{First: 512, Second: 512}
-  			addResp, err := client.Add(context.Background(), addReq)
-        if err != nil {
-                log.Fatal(err)
-        }
-        log.Println(addResp)
-        time.Sleep(time.Second)
-}
-```
-
-### 重新运行示例代码
-
-关闭之前运行的客户端和服务端之后
-
-1.运行 server
-
-`go run .`
-
-2. 运行 client
-
-另起一个终端后，`go run ./client`
-
-现在，你应该能看到客户端在调用 `Add` 方法了。
+4. 运行 client
+    ```bash
+    docker run --network host kitex-examples hello-client
+    ```
 
 ## 基础教程
 
