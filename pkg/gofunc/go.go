@@ -18,8 +18,11 @@ package gofunc
 
 import (
 	"context"
+	"fmt"
+	"github.com/bytedance/gopkg/util/logger"
+	"runtime/debug"
 
-	"github.com/bytedance/gopkg/util/gopool"
+	xsync "github.com/m3db/m3/src/x/sync"
 )
 
 // GoTask is used to spawn a new task.
@@ -27,9 +30,23 @@ type GoTask func(context.Context, func())
 
 // GoFunc is the default func used globally.
 var GoFunc GoTask
+var gopool *xsync.PooledWorkerPool
 
 func init() {
+	opts := xsync.NewPooledWorkerPoolOptions()
+	opts.SetGrowOnDemand(true)
+	gopool, _ := xsync.NewPooledWorkerPool(1024, opts)
+	gopool.Init()
+
 	GoFunc = func(ctx context.Context, f func()) {
-		gopool.CtxGo(ctx, f)
+		gopool.Go(func() {
+			defer func() {
+				if r := recover(); r != nil {
+					msg := fmt.Sprintf("GOPOOL: panic in pool: %s: %v: %s", "m3-gopool", r, debug.Stack())
+					logger.CtxErrorf(ctx, msg)
+				}
+			}()
+			f()
+		})
 	}
 }
