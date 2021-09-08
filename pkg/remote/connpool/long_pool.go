@@ -24,6 +24,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudwego/netpoll"
+
 	"github.com/cloudwego/kitex/pkg/connpool"
 	"github.com/cloudwego/kitex/pkg/remote"
 	"github.com/cloudwego/kitex/pkg/utils"
@@ -123,6 +125,11 @@ func (p *peer) Get(d remote.Dialer, timeout time.Duration, reporter Reporter) (n
 		reporter.ConnFailed(Long, p.serviceName, p.addr)
 		return nil, err
 	}
+
+	// set no delay
+	connection := conn.(netpoll.Connection)
+	connection.SetNoDelay(true)
+
 	reporter.ConnSucceed(Long, p.serviceName, p.addr)
 	return &longConn{Conn: conn, deadline: time.Now().Add(p.maxIdleTimeout)}, nil
 }

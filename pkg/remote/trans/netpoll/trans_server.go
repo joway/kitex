@@ -113,6 +113,9 @@ func (ts *transServer) onConnActive(conn netpoll.Connection) context.Context {
 		return nil
 	})
 	ts.connCount.Inc()
+	// set no delay
+	connection := conn.(netpoll.Connection)
+	connection.SetNoDelay(true)
 	ctx, err := ts.transHdlr.OnActive(ctx, conn)
 	if err != nil {
 		ts.onError(ctx, err, conn)

@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/cloudwego/netpoll"
+
 	"github.com/cloudwego/kitex/pkg/remote"
 	"github.com/cloudwego/kitex/pkg/utils"
 )
@@ -71,6 +73,11 @@ func (p *ShortPool) Get(ctx context.Context, network, address string, opt *remot
 		p.reporter.ConnFailed(Short, p.serviceName, addr)
 		return nil, fmt.Errorf("dial connection err: %s, addr: %s", err, addr)
 	}
+
+	// set no delay
+	connection := conn.(netpoll.Connection)
+	connection.SetNoDelay(true)
+
 	p.reporter.ConnSucceed(Short, p.serviceName, addr)
 	return &shortConn{Conn: conn}, nil
 }
