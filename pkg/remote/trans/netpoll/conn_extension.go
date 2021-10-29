@@ -40,7 +40,7 @@ type netpollConnExtension struct{}
 func (e *netpollConnExtension) SetReadTimeout(ctx context.Context, conn net.Conn, cfg rpcinfo.RPCConfig, role remote.RPCRole) {
 	npConn := conn.(netpoll.Connection)
 	if role == remote.Client {
-		npConn.SetReadTimeout(trans.GetReadTimeout(cfg))
+		npConn.SetReadTimeout(cfg.ReadWriteTimeout())
 	} else {
 		npConn.SetReadTimeout(cfg.ReadWriteTimeout())
 	}
