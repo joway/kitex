@@ -18,6 +18,7 @@ package gofunc
 
 import (
 	"context"
+	"runtime"
 
 	"github.com/bytedance/gopkg/util/gopool"
 )
@@ -29,7 +30,14 @@ type GoTask func(context.Context, func())
 var GoFunc GoTask
 
 func init() {
-	GoFunc = func(ctx context.Context, f func()) {
-		gopool.CtxGo(ctx, f)
+	var procs = runtime.GOMAXPROCS(0)
+	if procs > 8 {
+		GoFunc = func(ctx context.Context, f func()) {
+			go f()
+		}
+	} else {
+		GoFunc = func(ctx context.Context, f func()) {
+			gopool.CtxGo(ctx, f)
+		}
 	}
 }
