@@ -34,11 +34,19 @@ import (
 // workerPool is used to reduce the timeout goroutine overhead.
 var workerPool *wpool.Pool
 
+const (
+	// if there are lots of requests in short time,
+	// it will cause maxIdleWorker goroutines stay in runtime but dead after maxIdleWorkerTime.
+	// so it's safe to set a large idle workers number.
+	maxIdleWorker     = 1024
+	maxIdleWorkerTime = time.Minute
+)
+
 func init() {
 	// if timeout middleware is not enabled, it will not cause any extra overhead
 	workerPool = wpool.New(
-		128,
-		time.Minute,
+		maxIdleWorker,
+		maxIdleWorkerTime,
 	)
 }
 
