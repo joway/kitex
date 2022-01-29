@@ -46,61 +46,52 @@ type grpcCodec struct{}
 func (c *grpcCodec) Encode(ctx context.Context, message remote.Message, out remote.ByteBuffer) (err error) {
 	// 5byte + body
 	data := message.Data()
-	var (
-		size int
-		buf  []byte
-	)
+	var bodyBuf []byte
 	switch t := data.(type) {
 	case marshaler:
-		size = t.Size()
-		buf, err = out.Malloc(5 + size)
+		size := t.Size()
+		buf, err := out.Malloc(5 + size)
 		if err != nil {
 			return err
 		}
-		if _, err = t.MarshalTo(buf[5:]); err != nil {
+		buf[0] = 0
+		binary.BigEndian.PutUint32(buf[1:5], uint32(size))
+		if _, err = t.MarshalTo(buf[:5]); err != nil {
 			return err
 		}
+		return nil
 	case protobufV2MsgCodec:
-		d, err := t.XXX_Marshal(nil, true)
+		bodyBuf, err = t.XXX_Marshal(nil, true)
 		if err != nil {
 			return err
 		}
-		size = len(d)
-		buf, err = out.Malloc(5 + size)
-		if err != nil {
-			return err
-		}
-		copy(buf[5:], d)
 	case proto.Message:
-		d, err := proto.Marshal(t)
+		bodyBuf, err = proto.Marshal(t)
 		if err != nil {
 			return err
 		}
-		size = len(d)
-		buf, err = out.Malloc(5 + size)
-		if err != nil {
-			return err
-		}
-		copy(buf[5:], d)
 	case protobufMsgCodec:
-		d, err := t.Marshal(nil)
+		bodyBuf, err = t.Marshal(nil)
 		if err != nil {
 			return err
 		}
-		size = len(d)
-		buf, err = out.Malloc(5 + size)
-		if err != nil {
-			return err
-		}
-		copy(buf[5:], d)
 	}
+	sizeBuf := make([]byte, 5)
 	// reuse buffer need clean data
-	buf[0] = 0
-	binary.BigEndian.PutUint32(buf[1:5], uint32(size))
+	sizeBuf[0] = 0
+	binary.BigEndian.PutUint32(sizeBuf[1:5], uint32(len(bodyBuf)))
+	if _, err = out.WriteBinary(sizeBuf); err != nil {
+		return err
+	}
+	if _, err = out.WriteBinary(bodyBuf); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (c *grpcCodec) Decode(ctx context.Context, message remote.Message, in remote.ByteBuffer) (err error) {
+	defer in.Release(err)
+
 	hdr, err := in.Next(5)
 	if err != nil {
 		return err
