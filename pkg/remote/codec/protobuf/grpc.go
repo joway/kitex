@@ -90,8 +90,6 @@ func (c *grpcCodec) Encode(ctx context.Context, message remote.Message, out remo
 }
 
 func (c *grpcCodec) Decode(ctx context.Context, message remote.Message, in remote.ByteBuffer) (err error) {
-	defer in.Release(err)
-
 	hdr, err := in.Next(5)
 	if err != nil {
 		return err

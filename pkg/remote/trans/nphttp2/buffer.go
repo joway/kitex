@@ -19,18 +19,11 @@ package nphttp2
 import (
 	"errors"
 	"net"
-	"sync"
 
 	"github.com/cloudwego/netpoll"
 
 	"github.com/cloudwego/kitex/pkg/remote"
 )
-
-var bufferPool = sync.Pool{New: func() interface{} {
-	return &buffer{
-		buf: netpoll.NewLinkBuffer(),
-	}
-}}
 
 type buffer struct {
 	buf      *netpoll.LinkBuffer
@@ -41,9 +34,10 @@ type buffer struct {
 var _ remote.ByteBuffer = (*buffer)(nil)
 
 func newBuffer(conn net.Conn) *buffer {
-	buf := bufferPool.Get().(*buffer)
-	buf.conn = conn
-	return buf
+	return &buffer{
+		buf:  netpoll.NewLinkBuffer(),
+		conn: conn,
+	}
 }
 
 func (b *buffer) readN(n int) error {
@@ -97,7 +91,6 @@ func (b *buffer) Skip(n int) (err error) {
 }
 
 func (b *buffer) Release(e error) (err error) {
-	b.readSize = 0
 	return b.buf.Close()
 }
 
