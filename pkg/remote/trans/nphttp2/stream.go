@@ -30,26 +30,25 @@ import (
 type Streamer func(ctx context.Context, svcInfo serviceinfo.ServiceInfo, conn net.Conn,
 	handler remote.TransReadWriter) streaming.Stream
 
-type ctxStreamBufferKey struct{}
+type ctxStreamReadBufferKey struct{}
+type ctxStreamWriteBufferKey struct{}
 
 type stream struct {
 	ctx     context.Context
 	svcInfo *serviceinfo.ServiceInfo
 	conn    net.Conn
-	buf     *buffer
 	handler remote.TransReadWriter
 }
 
 // NewStream ...
 func NewStream(ctx context.Context, svcInfo *serviceinfo.ServiceInfo, conn net.Conn,
 	handler remote.TransReadWriter) streaming.Stream {
-	buf := newBuffer(conn)
-	ctx = context.WithValue(ctx, ctxStreamBufferKey{}, buf)
+	ctx = context.WithValue(ctx, ctxStreamReadBufferKey{}, newBuffer(conn))
+	ctx = context.WithValue(ctx, ctxStreamWriteBufferKey{}, newBuffer(conn))
 	return &stream{
 		ctx:     ctx,
 		svcInfo: svcInfo,
 		conn:    conn,
-		buf:     buf,
 		handler: handler,
 	}
 }
