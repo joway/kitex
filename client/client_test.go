@@ -52,7 +52,7 @@ var (
 	}
 	dialer = &remote.SynthesizedDialer{
 		DialFunc: func(network, address string, timeout time.Duration) (net.Conn, error) {
-			return conn, nil
+			return net.Dial(network, address)
 		},
 	}
 	hdlr = &mocks.MockCliTransHandler{}
@@ -61,7 +61,7 @@ var (
 func newMockClient(tb testing.TB, opts ...Option) Client {
 	opts = append(opts, WithTransHandlerFactory(mocks.NewMockCliTransHandlerFactory(hdlr)))
 	opts = append(opts, WithResolver(resolver404))
-	opts = append(opts, WithDialer(dialer))
+	opts = append(opts, WithDialer(remote.NewDefaultDialer()))
 	opts = append(opts, WithDestService("destService"))
 
 	svcInfo := mocks.ServiceInfo()
