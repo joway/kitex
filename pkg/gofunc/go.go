@@ -20,8 +20,9 @@ import (
 	"context"
 	"runtime/debug"
 	"sync"
+	"time"
 
-	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/cloudwego/kitex/internal/wpool"
 	"github.com/cloudwego/kitex/pkg/klog"
 )
 
@@ -31,9 +32,20 @@ type GoTask func(context.Context, func())
 // GoFunc is the default func used globally.
 var GoFunc GoTask
 
+// workerPool is used to reduce the timeout goroutine overhead.
+var workerPool *wpool.Pool
+
+func init() {
+	// if timeout middleware is not enabled, it will not cause any extra overhead
+	workerPool = wpool.New(
+		128,
+		time.Minute,
+	)
+}
+
 func init() {
 	GoFunc = func(ctx context.Context, f func()) {
-		gopool.CtxGo(ctx, f)
+		workerPool.Go(f)
 	}
 }
 
