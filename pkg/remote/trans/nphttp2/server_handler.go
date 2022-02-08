@@ -22,11 +22,9 @@ import (
 	"net"
 	"runtime/debug"
 	"strings"
-	"time"
 
 	"github.com/cloudwego/netpoll"
 
-	"github.com/cloudwego/kitex/internal/wpool"
 	"github.com/cloudwego/kitex/pkg/endpoint"
 	"github.com/cloudwego/kitex/pkg/kerrors"
 	"github.com/cloudwego/kitex/pkg/klog"
@@ -40,17 +38,6 @@ import (
 	"github.com/cloudwego/kitex/pkg/streaming"
 	"github.com/cloudwego/kitex/transport"
 )
-
-// workerPool is used to reduce the timeout goroutine overhead.
-var workerPool *wpool.Pool
-
-func init() {
-	// if timeout middleware is not enabled, it will not cause any extra overhead
-	workerPool = wpool.New(
-		128,
-		time.Minute,
-	)
-}
 
 type svrTransHandlerFactory struct{}
 
@@ -106,7 +93,7 @@ func (t *svrTransHandler) OnRead(ctx context.Context, conn net.Conn) error {
 	defer tr.Close()
 
 	tr.HandleStreams(func(s *grpcTransport.Stream) {
-		workerPool.Go(func() {
+		go func() {
 			ri, ctx := t.opt.InitRPCInfoFunc(s.Context(), tr.RemoteAddr())
 			// set grpc transport flag before execute metahandler
 			rpcinfo.AsMutableRPCConfig(ri.Config()).SetTransportProtocol(transport.GRPC)
@@ -168,7 +155,7 @@ func (t *svrTransHandler) OnRead(ctx context.Context, conn net.Conn) error {
 				return
 			}
 			tr.WriteStatus(s, status.New(codes.OK, ""))
-		})
+		}()
 	}, func(ctx context.Context, method string) context.Context {
 		return ctx
 	})
