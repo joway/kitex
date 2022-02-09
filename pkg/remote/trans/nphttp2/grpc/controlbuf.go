@@ -523,9 +523,11 @@ func (l *loopyWriter) run(remoteAddr string) (err error) {
 		if _, err = l.processData(); err != nil {
 			return err
 		}
-		var lastWritten int
+		//var lastWritten int
+		var tried int
 	hasdata:
 		for {
+			tried++
 			it, err := l.cbuf.get(false)
 			if err != nil {
 				return err
@@ -548,8 +550,8 @@ func (l *loopyWriter) run(remoteAddr string) (err error) {
 			}
 			written := l.framer.writer.MallocLen()
 			//fmt.Println("flushing", lastWritten, written)
-			if written < minBatchSize && lastWritten < written {
-				lastWritten = written
+			if tried < 12 && written < minBatchSize {
+				//lastWritten = written
 				runtime.Gosched()
 				continue hasdata
 			}
