@@ -36,8 +36,11 @@ func newGrpcBuffer(conn grpcConn) *grpcBuffer {
 }
 
 func (s *grpcBuffer) growRbuf(n int) {
-	buf := make([]byte, len(s.rbuf), 2*cap(s.rbuf)+n)
-	copy(buf, s.rbuf)
+	capacity := cap(s.rbuf)
+	if capacity >= n {
+		return
+	}
+	buf := make([]byte, 0, 2*capacity+n)
 	s.rbuf = buf
 }
 
@@ -50,31 +53,13 @@ func (s *grpcBuffer) growWbuf(n int) {
 	s.wbuf = buf
 }
 
-func (s *grpcBuffer) waitForRead(n int) error {
-	l := len(s.rbuf)
-	if l > n {
-		return nil
-	}
-	capacity := cap(s.rbuf)
-	if capacity < n {
-		// growing buffer
-		s.growRbuf(n)
-	}
-	reads, err := s.conn.Read(s.rbuf[l : l+n])
-	if err != nil {
-		return err
-	}
-	s.rbuf = s.rbuf[:l+reads]
-	return nil
-}
-
 func (s *grpcBuffer) Next(n int) (p []byte, err error) {
-	if err = s.waitForRead(n); err != nil {
+	s.growRbuf(n)
+	_, err = s.conn.Read(s.rbuf[:n])
+	if err != nil {
 		return nil, err
 	}
-	p = s.rbuf[:n]
-	s.rbuf = s.rbuf[n:]
-	return p, nil
+	return s.rbuf[:n], nil
 }
 
 func (s *grpcBuffer) MallocHeader(n int) (buf []byte, err error) {
