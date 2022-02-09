@@ -72,8 +72,12 @@ func (c *clientConn) Write(b []byte) (n int, err error) {
 	if len(b) < 5 {
 		return 0, io.ErrShortWrite
 	}
-	err = c.tr.Write(c.s, b[:5], b[5:], &grpc.Options{})
-	return len(b), convertErrorFromGrpcToKitex(err)
+	return c.WriteFrame(b[:5], b[5:])
+}
+
+func (c *clientConn) WriteFrame(hdr, body []byte) (n int, err error) {
+	err = c.tr.Write(c.s, hdr, body, &grpc.Options{})
+	return len(hdr) + len(body), convertErrorFromGrpcToKitex(err)
 }
 
 func (c *clientConn) LocalAddr() net.Addr                { return c.tr.LocalAddr() }

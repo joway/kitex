@@ -39,7 +39,7 @@ func (f *cliTransHandlerFactory) NewTransHandler(opt *remote.ClientOption) (remo
 func newCliTransHandler(opt *remote.ClientOption) (*cliTransHandler, error) {
 	return &cliTransHandler{
 		opt:   opt,
-		codec: protobuf.NewGRPCCodec(),
+		codec: new(protobuf.GrpcCodec),
 	}, nil
 }
 
@@ -47,11 +47,11 @@ var _ remote.ClientTransHandler = &cliTransHandler{}
 
 type cliTransHandler struct {
 	opt   *remote.ClientOption
-	codec remote.Codec
+	codec *protobuf.GrpcCodec
 }
 
 func (h *cliTransHandler) Write(ctx context.Context, conn net.Conn, msg remote.Message) (err error) {
-	buf := newBuffer(conn)
+	buf := newGrpcBuffer(conn.(*clientConn))
 	defer buf.Release(err)
 
 	if err = h.codec.Encode(ctx, msg, buf); err != nil {
@@ -61,8 +61,9 @@ func (h *cliTransHandler) Write(ctx context.Context, conn net.Conn, msg remote.M
 }
 
 func (h *cliTransHandler) Read(ctx context.Context, conn net.Conn, msg remote.Message) (err error) {
-	buf := newBuffer(conn)
+	buf := newGrpcBuffer(conn.(*clientConn))
 	defer buf.Release(err)
+
 	err = h.codec.Decode(ctx, msg, buf)
 	return
 }

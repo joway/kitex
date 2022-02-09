@@ -34,6 +34,18 @@ type NocopyWrite interface {
 	WriteDirect(buf []byte, remainCap int) error
 }
 
+type GRPCBuffer interface {
+	Next(n int) (p []byte, err error)
+
+	MallocHeader(n int) (buf []byte, err error)
+	Malloc(n int) (buf []byte, err error)
+	WriteHeader(buf []byte) (err error)
+	Write(buf []byte) (err error)
+	Flush() (err error)
+
+	Release(e error) (err error)
+}
+
 // ByteBuffer is the core abstraction of buffer in Kitex.
 type ByteBuffer interface {
 	io.ReadWriter

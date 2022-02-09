@@ -27,22 +27,22 @@ import (
 )
 
 type serverConn struct {
-	tr grpc.ServerTransport
-	s  *grpc.Stream
+	tr     grpc.ServerTransport
+	stream *grpc.Stream
 }
 
 var _ net.Conn = (*serverConn)(nil)
 
-func newServerConn(tr grpc.ServerTransport, s *grpc.Stream) *serverConn {
+func newServerConn(tr grpc.ServerTransport, stream *grpc.Stream) *serverConn {
 	return &serverConn{
-		tr: tr,
-		s:  s,
+		tr:     tr,
+		stream: stream,
 	}
 }
 
 // impl net.Conn
 func (c *serverConn) Read(b []byte) (n int, err error) {
-	n, err = c.s.Read(b)
+	n, err = c.stream.Read(b)
 	return n, convertErrorFromGrpcToKitex(err)
 }
 
@@ -50,8 +50,12 @@ func (c *serverConn) Write(b []byte) (n int, err error) {
 	if len(b) < 5 {
 		return 0, io.ErrShortWrite
 	}
-	err = c.tr.Write(c.s, b[:5], b[5:], nil)
-	return len(b), convertErrorFromGrpcToKitex(err)
+	return c.WriteFrame(b[:5], b[5:])
+}
+
+func (c *serverConn) WriteFrame(hdr, body []byte) (n int, err error) {
+	err = c.tr.Write(c.stream, hdr, body, nil)
+	return len(hdr) + len(body), convertErrorFromGrpcToKitex(err)
 }
 
 func (c *serverConn) LocalAddr() net.Addr                { return c.tr.LocalAddr() }
@@ -60,5 +64,5 @@ func (c *serverConn) SetDeadline(t time.Time) error      { return nil }
 func (c *serverConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *serverConn) SetWriteDeadline(t time.Time) error { return nil }
 func (c *serverConn) Close() error {
-	return c.tr.WriteStatus(c.s, status.New(codes.OK, ""))
+	return c.tr.WriteStatus(c.stream, status.New(codes.OK, ""))
 }

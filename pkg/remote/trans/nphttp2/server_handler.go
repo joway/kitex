@@ -55,7 +55,7 @@ func newSvrTransHandler(opt *remote.ServerOption) (*svrTransHandler, error) {
 	return &svrTransHandler{
 		opt:     opt,
 		svcInfo: opt.SvcInfo,
-		codec:   protobuf.NewGRPCCodec(),
+		codec:   new(protobuf.GrpcCodec),
 	}, nil
 }
 
@@ -65,11 +65,11 @@ type svrTransHandler struct {
 	opt        *remote.ServerOption
 	svcInfo    *serviceinfo.ServiceInfo
 	inkHdlFunc endpoint.Endpoint
-	codec      remote.Codec
+	codec      *protobuf.GrpcCodec
 }
 
 func (t *svrTransHandler) Write(ctx context.Context, conn net.Conn, msg remote.Message) (err error) {
-	buf := newBuffer(conn)
+	buf := newGrpcBuffer(conn.(*serverConn))
 	defer buf.Release(err)
 
 	if err = t.codec.Encode(ctx, msg, buf); err != nil {
@@ -79,8 +79,9 @@ func (t *svrTransHandler) Write(ctx context.Context, conn net.Conn, msg remote.M
 }
 
 func (t *svrTransHandler) Read(ctx context.Context, conn net.Conn, msg remote.Message) (err error) {
-	buf := newBuffer(conn)
+	buf := newGrpcBuffer(conn.(*serverConn))
 	defer buf.Release(err)
+
 	err = t.codec.Decode(ctx, msg, buf)
 	return
 }

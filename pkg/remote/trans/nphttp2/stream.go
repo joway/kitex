@@ -31,20 +31,20 @@ type Streamer func(ctx context.Context, svcInfo serviceinfo.ServiceInfo, conn ne
 	handler remote.TransReadWriter) streaming.Stream
 
 type stream struct {
-	ctx     context.Context
-	svcInfo *serviceinfo.ServiceInfo
-	conn    net.Conn
-	handler remote.TransReadWriter
+	ctx        context.Context
+	svcInfo    *serviceinfo.ServiceInfo
+	serverConn net.Conn
+	handler    remote.TransReadWriter
 }
 
 // NewStream ...
-func NewStream(ctx context.Context, svcInfo *serviceinfo.ServiceInfo, conn net.Conn,
+func NewStream(ctx context.Context, svcInfo *serviceinfo.ServiceInfo, serverConn net.Conn,
 	handler remote.TransReadWriter) streaming.Stream {
 	return &stream{
-		ctx:     ctx,
-		svcInfo: svcInfo,
-		conn:    conn,
-		handler: handler,
+		ctx:        ctx,
+		svcInfo:    svcInfo,
+		serverConn: serverConn,
+		handler:    handler,
 	}
 }
 
@@ -59,7 +59,7 @@ func (s *stream) RecvMsg(m interface{}) error {
 	msg.SetProtocolInfo(remote.NewProtocolInfo(ri.Config().TransportProtocol(), s.svcInfo.PayloadCodec))
 	defer msg.Recycle()
 
-	return s.handler.Read(s.ctx, s.conn, msg)
+	return s.handler.Read(s.ctx, s.serverConn, msg)
 }
 
 func (s *stream) SendMsg(m interface{}) error {
@@ -69,9 +69,9 @@ func (s *stream) SendMsg(m interface{}) error {
 	msg.SetProtocolInfo(remote.NewProtocolInfo(ri.Config().TransportProtocol(), s.svcInfo.PayloadCodec))
 	defer msg.Recycle()
 
-	return s.handler.Write(s.ctx, s.conn, msg)
+	return s.handler.Write(s.ctx, s.serverConn, msg)
 }
 
 func (s *stream) Close() error {
-	return s.conn.Close()
+	return s.serverConn.Close()
 }

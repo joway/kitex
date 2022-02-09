@@ -36,28 +36,22 @@ type protobufV2MsgCodec interface {
 	XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 }
 
-// NewGRPCCodec create grpc and protobuf codec
-func NewGRPCCodec() remote.Codec {
-	return new(grpcCodec)
-}
+type GrpcCodec struct{}
 
-type grpcCodec struct{}
-
-func (c *grpcCodec) Encode(ctx context.Context, message remote.Message, out remote.ByteBuffer) (err error) {
+func (c *GrpcCodec) Encode(ctx context.Context, message remote.Message, out remote.GRPCBuffer) (err error) {
 	// 5byte + body
 	data := message.Data()
 	var (
 		size int
-		buf  []byte
 	)
 	switch t := data.(type) {
 	case marshaler:
 		size = t.Size()
-		buf, err = out.Malloc(5 + size)
+		buf, err := out.Malloc(size)
 		if err != nil {
 			return err
 		}
-		if _, err = t.MarshalTo(buf[5:]); err != nil {
+		if _, err = t.MarshalTo(buf); err != nil {
 			return err
 		}
 	case protobufV2MsgCodec:
@@ -66,41 +60,38 @@ func (c *grpcCodec) Encode(ctx context.Context, message remote.Message, out remo
 			return err
 		}
 		size = len(d)
-		buf, err = out.Malloc(5 + size)
+		err = out.Write(d)
 		if err != nil {
 			return err
 		}
-		copy(buf[5:], d)
 	case proto.Message:
 		d, err := proto.Marshal(t)
 		if err != nil {
 			return err
 		}
 		size = len(d)
-		buf, err = out.Malloc(5 + size)
+		err = out.Write(d)
 		if err != nil {
 			return err
 		}
-		copy(buf[5:], d)
 	case protobufMsgCodec:
 		d, err := t.Marshal(nil)
 		if err != nil {
 			return err
 		}
 		size = len(d)
-		buf, err = out.Malloc(5 + size)
+		err = out.Write(d)
 		if err != nil {
 			return err
 		}
-		copy(buf[5:], d)
 	}
-	// reuse buffer need clean data
-	buf[0] = 0
-	binary.BigEndian.PutUint32(buf[1:5], uint32(size))
-	return nil
+	hdrBuf := make([]byte, 5)
+	hdrBuf[0] = 0
+	binary.BigEndian.PutUint32(hdrBuf[1:5], uint32(size))
+	return out.WriteHeader(hdrBuf)
 }
 
-func (c *grpcCodec) Decode(ctx context.Context, message remote.Message, in remote.ByteBuffer) (err error) {
+func (c *GrpcCodec) Decode(ctx context.Context, message remote.Message, in remote.GRPCBuffer) (err error) {
 	hdr, err := in.Next(5)
 	if err != nil {
 		return err
@@ -122,6 +113,6 @@ func (c *grpcCodec) Decode(ctx context.Context, message remote.Message, in remot
 	return nil
 }
 
-func (c *grpcCodec) Name() string {
+func (c *GrpcCodec) Name() string {
 	return "grpc"
 }
