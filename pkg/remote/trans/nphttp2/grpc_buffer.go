@@ -1,6 +1,8 @@
 package nphttp2
 
 import (
+	"sync"
+
 	"github.com/cloudwego/kitex/pkg/remote"
 )
 
@@ -17,14 +19,20 @@ type grpcBuffer struct {
 }
 
 var _ remote.GRPCBuffer = (*grpcBuffer)(nil)
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return &grpcBuffer{
+			rbuf: make([]byte, 0, 4096),
+			wbuf: make([]byte, 0, 4096),
+			whdr: make([]byte, 0, 8),
+		}
+	},
+}
 
 func newGrpcBuffer(conn grpcConn) *grpcBuffer {
-	return &grpcBuffer{
-		rbuf: make([]byte, 0, 4096),
-		wbuf: make([]byte, 0, 4096),
-		whdr: make([]byte, 0, 8),
-		conn: conn,
-	}
+	buf := bufferPool.Get().(*grpcBuffer)
+	buf.conn = conn
+	return buf
 }
 
 func (s *grpcBuffer) growRbuf(n int) {
@@ -102,5 +110,7 @@ func (s *grpcBuffer) Release(e error) (err error) {
 	s.rbuf = s.rbuf[:0]
 	s.whdr = s.whdr[:0]
 	s.wbuf = s.wbuf[:0]
+	s.woff = 0
+	bufferPool.Put(s)
 	return e
 }
