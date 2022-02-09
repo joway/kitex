@@ -27,9 +27,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/cloudwego/kitex/pkg/klog"
 	"github.com/cloudwego/netpoll-http2"
 	"github.com/cloudwego/netpoll-http2/hpack"
+
+	"github.com/cloudwego/kitex/pkg/klog"
 )
 
 var updateHeaderTblSize = func(e *hpack.Encoder, v uint32) {
@@ -482,7 +483,7 @@ func newLoopyWriter(s side, fr *framer, cbuf *controlBuffer, bdpEst *bdpEstimato
 	return l
 }
 
-const minBatchSize = 1000
+const minBatchSize = 1024 * 64
 
 // run should be run in a separate goroutine.
 // It reads control frames from controlBuf and processes them by:
@@ -522,7 +523,7 @@ func (l *loopyWriter) run(remoteAddr string) (err error) {
 		if _, err = l.processData(); err != nil {
 			return err
 		}
-		gosched := true
+		var lastWritten int
 	hasdata:
 		for {
 			it, err := l.cbuf.get(false)
@@ -545,13 +546,15 @@ func (l *loopyWriter) run(remoteAddr string) (err error) {
 			if !isEmpty {
 				continue hasdata
 			}
-			if gosched {
-				gosched = false
-				if l.framer.writer.MallocLen() < minBatchSize {
-					runtime.Gosched()
-					continue hasdata
-				}
+			written := l.framer.writer.MallocLen()
+			//fmt.Println("flushing", lastWritten, written)
+			if written < minBatchSize && lastWritten < written {
+				lastWritten = written
+				runtime.Gosched()
+				continue hasdata
 			}
+			//fmt.Println("flushed", written)
+			// no new data incoming
 			l.framer.writer.Flush()
 			break hasdata
 		}
