@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/bytedance/gopkg/util/gopool"
+
 	"github.com/cloudwego/kitex/pkg/klog"
 )
 
@@ -37,10 +38,8 @@ func init() {
 	}
 }
 
-// RecoverGoFuncWithInfo is the go func with recover panic and service info.
-// It is used for panic defence and output key info for troubleshooting.
-func RecoverGoFuncWithInfo(ctx context.Context, task func(), info *Info) {
-	GoFunc(ctx, func() {
+func _recoverWithInfo(ctx context.Context, task func(), info *Info) func() {
+	return func() {
 		defer func() {
 			if panicErr := recover(); panicErr != nil {
 				if info.RemoteService == "" {
@@ -63,7 +62,17 @@ func RecoverGoFuncWithInfo(ctx context.Context, task func(), info *Info) {
 		}()
 
 		task()
-	})
+	}
+}
+
+func RecoverNativeGoFuncWithInfo(ctx context.Context, task func(), info *Info) {
+	go _recoverWithInfo(ctx, task, info)()
+}
+
+// RecoverGoFuncWithInfo is the go func with recover panic and service info.
+// It is used for panic defence and output key info for troubleshooting.
+func RecoverGoFuncWithInfo(ctx context.Context, task func(), info *Info) {
+	GoFunc(ctx, _recoverWithInfo(ctx, task, info))
 }
 
 // SetPanicHandler is used to do something when panic happen, for example do metric report.

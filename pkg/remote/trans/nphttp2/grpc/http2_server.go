@@ -34,14 +34,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cloudwego/kitex/pkg/gofunc"
-	"github.com/cloudwego/kitex/pkg/klog"
-	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/metadata"
-	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/status"
 	"github.com/cloudwego/netpoll"
 	http2 "github.com/cloudwego/netpoll-http2"
 	"github.com/cloudwego/netpoll-http2/hpack"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/cloudwego/kitex/pkg/gofunc"
+	"github.com/cloudwego/kitex/pkg/klog"
+	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/metadata"
+	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/status"
 )
 
 var (
@@ -200,7 +201,7 @@ func newHTTP2Server(ctx context.Context, conn netpoll.Connection) (_ ServerTrans
 	}
 	t.handleSettings(sf)
 
-	gofunc.RecoverGoFuncWithInfo(ctx, func() {
+	gofunc.RecoverNativeGoFuncWithInfo(ctx, func() {
 		t.loopy = newLoopyWriter(serverSide, t.framer, t.controlBuf, t.bdpEst)
 		t.loopy.ssGoAwayHandler = t.outgoingGoAwayHandler
 		if err := t.loopy.run(conn.RemoteAddr().String()); err != nil {
@@ -210,7 +211,7 @@ func newHTTP2Server(ctx context.Context, conn netpoll.Connection) (_ ServerTrans
 		close(t.writerDone)
 	}, gofunc.NewBasicInfo("", conn.RemoteAddr().String()))
 
-	gofunc.RecoverGoFuncWithInfo(ctx, t.keepalive, gofunc.NewBasicInfo("", conn.RemoteAddr().String()))
+	gofunc.RecoverNativeGoFuncWithInfo(ctx, t.keepalive, gofunc.NewBasicInfo("", conn.RemoteAddr().String()))
 	return t, nil
 }
 
@@ -1004,7 +1005,7 @@ func (t *http2Server) outgoingGoAwayHandler(g *goAway) (bool, error) {
 		return false, err
 	}
 
-	gofunc.RecoverGoFuncWithInfo(context.Background(), func() {
+	gofunc.RecoverNativeGoFuncWithInfo(context.Background(), func() {
 		timer := time.NewTimer(time.Minute)
 		defer timer.Stop()
 		select {
