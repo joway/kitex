@@ -523,7 +523,6 @@ func (l *loopyWriter) run(remoteAddr string) (err error) {
 		if _, err = l.processData(); err != nil {
 			return err
 		}
-		//var lastWritten int
 		var tried int
 	hasdata:
 		for {

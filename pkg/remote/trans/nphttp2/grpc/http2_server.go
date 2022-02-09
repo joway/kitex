@@ -56,6 +56,7 @@ var (
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
+	netpoll.DisableGopool()
 }
 
 // http2Server implements the ServerTransport interface with HTTP2.
