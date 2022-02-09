@@ -33,7 +33,7 @@ type Streamer func(ctx context.Context, svcInfo serviceinfo.ServiceInfo, conn ne
 type stream struct {
 	ctx     context.Context
 	svcInfo *serviceinfo.ServiceInfo
-	conn    net.Conn
+	conn    net.Conn // serverConn
 	handler remote.TransReadWriter
 }
 
