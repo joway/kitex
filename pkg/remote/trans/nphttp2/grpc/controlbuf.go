@@ -572,6 +572,7 @@ func (l *loopyWriter) run(remoteAddr string) (err error) {
 			} else {
 				atomic.AddInt64(&serverRunFlushCnt, 1)
 			}
+			atomic.AddInt64(&runFlushCnt, 1)
 			l.framer.writer.Flush()
 			break hasdata
 		}

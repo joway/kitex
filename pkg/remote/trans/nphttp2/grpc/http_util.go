@@ -45,6 +45,7 @@ import (
 
 var (
 	flushCnt                    int64
+	runFlushCnt                 int64
 	writeFlushCnt               int64
 	noQuotaCnt                  int64
 	noActiveStreamCnt           int64
@@ -114,6 +115,7 @@ func printFlushCnt() {
 			//	atomic.LoadInt64(&EnterSendMsg), atomic.LoadInt64(&EnterWrite), atomic.LoadInt64(&EnterPut)))
 
 			//println(fmt.Sprintf("NewStreamCnt=%d", atomic.LoadInt64(&NewStreamCnt)))
+			println(fmt.Sprintf("flushCnt=%d, runFlushCnt=%d, writeFlushCnt=%d", atomic.LoadInt64(&flushCnt), atomic.LoadInt64(&runFlushCnt), atomic.LoadInt64(&writeFlushCnt)))
 		}
 	}
 }
