@@ -34,14 +34,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cloudwego/kitex/pkg/gofunc"
-	"github.com/cloudwego/kitex/pkg/klog"
-	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/metadata"
-	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/status"
 	"github.com/cloudwego/netpoll"
 	http2 "github.com/cloudwego/netpoll-http2"
 	"github.com/cloudwego/netpoll-http2/hpack"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/cloudwego/kitex/pkg/gofunc"
+	"github.com/cloudwego/kitex/pkg/klog"
+	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/metadata"
+	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/status"
 )
 
 var (
@@ -606,8 +607,9 @@ func (t *http2Server) handlePing(f *http2.PingFrame) {
 		}
 		return
 	}
-	pingAck := &ping{ack: true}
-	copy(pingAck.data[:], f.Data[:])
+	pingAck := newPing()
+	pingAck.ack = true
+	pingAck.data = f.Data
 	t.controlBuf.put(pingAck)
 
 	now := time.Now()
@@ -808,12 +810,11 @@ func (t *http2Server) Write(s *Stream, hdr, data []byte, opts *Options) error {
 			return ContextErr(s.ctx.Err())
 		}
 	}
-	df := &dataFrame{
-		streamID:    s.id,
-		h:           hdr,
-		d:           data,
-		onEachWrite: t.setResetPingStrikes,
-	}
+	df := newDataFrame()
+	df.streamID = s.id
+	df.h = hdr
+	df.d = data
+	df.onEachWrite = t.setResetPingStrikes
 	if err := s.wq.get(int32(len(hdr) + len(data))); err != nil {
 		select {
 		case <-t.done:
@@ -832,7 +833,7 @@ func (t *http2Server) Write(s *Stream, hdr, data []byte, opts *Options) error {
 // 4. Makes sure a connection is alive by sending pings with a frequency of keepalive.Time and closes a non-responsive connection
 // after an additional duration of keepalive.Timeout.
 func (t *http2Server) keepalive() {
-	p := &ping{}
+	p := newPing()
 	// True iff a ping has been sent, and no data has been received since then.
 	outstandingPing := false
 	// Amount of time remaining before which we should receive an ACK for the

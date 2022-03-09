@@ -31,14 +31,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cloudwego/netpoll"
+	"github.com/cloudwego/netpoll-http2"
+	"github.com/cloudwego/netpoll-http2/hpack"
+
 	"github.com/cloudwego/kitex/pkg/gofunc"
 	"github.com/cloudwego/kitex/pkg/klog"
 	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/codes"
 	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/metadata"
 	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/status"
-	"github.com/cloudwego/netpoll"
-	"github.com/cloudwego/netpoll-http2"
-	"github.com/cloudwego/netpoll-http2/hpack"
 )
 
 // http2Client implements the ClientTransport interface with HTTP2.
@@ -569,12 +570,11 @@ func (t *http2Client) Write(s *Stream, hdr, data []byte, opts *Options) error {
 	} else if s.getState() != streamActive {
 		return errStreamDone
 	}
-	df := &dataFrame{
-		streamID:  s.id,
-		endStream: opts.Last,
-		h:         hdr,
-		d:         data,
-	}
+	df := newDataFrame()
+	df.streamID = s.id
+	df.endStream = opts.Last
+	df.h = hdr
+	df.d = data
 	if hdr != nil || data != nil { // If it's not an empty data frame, check quota.
 		if err := s.wq.get(int32(len(hdr) + len(data))); err != nil {
 			return err
@@ -779,8 +779,9 @@ func (t *http2Client) handlePing(f *http2.PingFrame) {
 		}
 		return
 	}
-	pingAck := &ping{ack: true}
-	copy(pingAck.data[:], f.Data[:])
+	pingAck := newPing()
+	pingAck.ack = true
+	pingAck.data = f.Data
 	t.controlBuf.put(pingAck)
 }
 
@@ -1012,7 +1013,8 @@ func minTime(a, b time.Duration) time.Duration {
 
 // keepalive running in a separate goroutune makes sure the connection is alive by sending pings.
 func (t *http2Client) keepalive() {
-	p := &ping{data: [8]byte{}}
+	p := newPing()
+	p.data = [8]byte{}
 	// True iff a ping has been sent, and no data has been received since then.
 	outstandingPing := false
 	// Amount of time remaining before which we should receive an ACK for the

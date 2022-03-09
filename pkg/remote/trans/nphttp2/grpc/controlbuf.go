@@ -27,9 +27,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/cloudwego/kitex/pkg/klog"
+	"github.com/bytedance/gopkg/util/autopool"
 	"github.com/cloudwego/netpoll-http2"
 	"github.com/cloudwego/netpoll-http2/hpack"
+
+	"github.com/cloudwego/kitex/pkg/klog"
 )
 
 var updateHeaderTblSize = func(e *hpack.Encoder, v uint32) {
@@ -131,6 +133,10 @@ type cleanupStream struct {
 
 func (c *cleanupStream) isTransportResponseFrame() bool { return c.rst } // Results in a RST_STREAM
 
+var dataFramePool = autopool.New(func() interface{} {
+	return &dataFrame{}
+})
+
 type dataFrame struct {
 	streamID  uint32
 	endStream bool
@@ -139,6 +145,15 @@ type dataFrame struct {
 	// onEachWrite is called every time
 	// a part of d is written out.
 	onEachWrite func()
+}
+
+func newDataFrame() *dataFrame {
+	p := dataFramePool.Get().(*dataFrame)
+	p.streamID = 0
+	p.endStream = false
+	p.h, p.d = nil, nil
+	p.onEachWrite = nil
+	return p
 }
 
 func (*dataFrame) isTransportResponseFrame() bool { return false }
@@ -184,9 +199,19 @@ type goAway struct {
 
 func (*goAway) isTransportResponseFrame() bool { return false }
 
+var pingPool = autopool.New(func() interface{} {
+	return &ping{}
+})
+
 type ping struct {
 	ack  bool
 	data [8]byte
+}
+
+func newPing() *ping {
+	p := pingPool.Get().(*ping)
+	p.ack = false
+	return p
 }
 
 func (*ping) isTransportResponseFrame() bool { return true }
