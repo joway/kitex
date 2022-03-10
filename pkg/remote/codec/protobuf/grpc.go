@@ -19,8 +19,7 @@ package protobuf
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
-
+	"github.com/cloudwego/kitex/pkg/protocol/bprotoc"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/cloudwego/kitex/pkg/remote"
@@ -31,54 +30,82 @@ type marshaler interface {
 	MarshalTo(data []byte) (n int, err error)
 	Size() int
 }
+
 type protobufV2MsgCodec interface {
 	XXX_Unmarshal(b []byte) error
 	XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 }
-
-type grpcCodec struct{}
 
 // NewGRPCCodec create grpc and protobuf codec
 func NewGRPCCodec() remote.Codec {
 	return new(grpcCodec)
 }
 
+type grpcCodec struct{}
+
 func (c *grpcCodec) Encode(ctx context.Context, message remote.Message, out remote.ByteBuffer) (err error) {
-	writer, ok := out.(remote.HeaderWrite)
-	if !ok {
-		return fmt.Errorf("output buffer must implement HeaderWrite")
-	}
 	// 5byte + body
 	data := message.Data()
-	var buf []byte
+	var (
+		size int
+		buf  []byte
+	)
+	// 2. encode pb struct
 	switch t := data.(type) {
+	case bprotoc.FastCodec:
+		size = t.Size()
+		buf, err = out.Malloc(5 + size)
+		if err != nil {
+			return err
+		}
+		t.FastWrite(buf[5:])
 	case marshaler:
-		buf = make([]byte, t.Size())
-		if _, err = t.MarshalTo(buf); err != nil {
+		size = t.Size()
+		buf, err = out.Malloc(5 + size)
+		if err != nil {
+			return err
+		}
+		if _, err = t.MarshalTo(buf[5:]); err != nil {
 			return err
 		}
 	case protobufV2MsgCodec:
-		buf, err = t.XXX_Marshal(nil, true)
+		d, err := t.XXX_Marshal(nil, true)
 		if err != nil {
 			return err
 		}
+		size = len(d)
+		buf, err = out.Malloc(5 + size)
+		if err != nil {
+			return err
+		}
+		copy(buf[5:], d)
 	case proto.Message:
-		buf, err = proto.Marshal(t)
+		d, err := proto.Marshal(t)
 		if err != nil {
 			return err
 		}
+		size = len(d)
+		buf, err = out.Malloc(5 + size)
+		if err != nil {
+			return err
+		}
+		copy(buf[5:], d)
 	case protobufMsgCodec:
-		buf, err = t.Marshal(nil)
+		d, err := t.Marshal(nil)
 		if err != nil {
 			return err
 		}
+		size = len(d)
+		buf, err = out.Malloc(5 + size)
+		if err != nil {
+			return err
+		}
+		copy(buf[5:], d)
 	}
-	if err = writer.WriteData(buf); err != nil {
-		return err
-	}
-	var hdrBuf [5]byte
-	binary.BigEndian.PutUint32(hdrBuf[1:5], uint32(len(buf)))
-	return writer.WriteHeader(hdrBuf[:])
+	// reuse buffer need clean data
+	buf[0] = 0
+	binary.BigEndian.PutUint32(buf[1:5], uint32(size))
+	return nil
 }
 
 func (c *grpcCodec) Decode(ctx context.Context, message remote.Message, in remote.ByteBuffer) (err error) {
@@ -93,6 +120,9 @@ func (c *grpcCodec) Decode(ctx context.Context, message remote.Message, in remot
 	}
 	data := message.Data()
 	switch t := data.(type) {
+	case bprotoc.FastCodec:
+		_, err = bprotoc.Binary.ReadMessage(d, int8(bprotoc.SkipTypeCheck), t)
+		return err
 	case protobufV2MsgCodec:
 		return t.XXX_Unmarshal(d)
 	case proto.Message:
@@ -102,6 +132,7 @@ func (c *grpcCodec) Decode(ctx context.Context, message remote.Message, in remot
 	}
 	return nil
 }
+
 func (c *grpcCodec) Name() string {
 	return "grpc"
 }
