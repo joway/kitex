@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/binary"
 
+	"github.com/cloudwego/kitex/pkg/protocol/bprotoc"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/cloudwego/kitex/pkg/remote"
@@ -51,6 +52,13 @@ func (c *grpcCodec) Encode(ctx context.Context, message remote.Message, out remo
 		buf  []byte
 	)
 	switch t := data.(type) {
+	case bprotoc.FastCodec:
+		size = t.Size()
+		buf, err = out.Malloc(5 + size)
+		if err != nil {
+			return err
+		}
+		t.FastWrite(buf[5:])
 	case marshaler:
 		size = t.Size()
 		buf, err = out.Malloc(5 + size)
@@ -112,6 +120,9 @@ func (c *grpcCodec) Decode(ctx context.Context, message remote.Message, in remot
 	}
 	data := message.Data()
 	switch t := data.(type) {
+	case bprotoc.FastCodec:
+		_, err = bprotoc.Binary.ReadMessage(d, int8(bprotoc.SkipTypeCheck), t)
+		return err
 	case protobufV2MsgCodec:
 		return t.XXX_Unmarshal(d)
 	case proto.Message:
