@@ -20,6 +20,8 @@ import (
 	"net"
 	"sync"
 
+	"github.com/bytedance/gopkg/lang/mcache"
+
 	"github.com/cloudwego/kitex/pkg/remote"
 )
 
@@ -81,6 +83,11 @@ func (b *buffer) WriteData(buf []byte) (err error) {
 	return nil
 }
 
+func (b *buffer) Malloc(n int) (buf []byte, err error) {
+	b.wbuf = mcache.Malloc(n)
+	return b.wbuf, nil
+}
+
 func (b *buffer) Flush() (err error) {
 	_, err = b.conn.WriteFrame(b.whdr, b.wbuf)
 	return err
@@ -89,7 +96,10 @@ func (b *buffer) Flush() (err error) {
 func (b *buffer) Release(e error) (err error) {
 	b.rbuf = b.rbuf[:0]
 	b.whdr = nil
-	b.wbuf = nil
+	if b.wbuf != nil {
+		mcache.Free(b.wbuf)
+		b.wbuf = nil
+	}
 	bufferPool.Put(b)
 	return e
 }
@@ -125,10 +135,6 @@ func (b *buffer) ReadString(n int) (s string, err error) {
 }
 
 func (b *buffer) ReadBinary(n int) (p []byte, err error) {
-	panic("implement me")
-}
-
-func (b *buffer) Malloc(n int) (buf []byte, err error) {
 	panic("implement me")
 }
 
