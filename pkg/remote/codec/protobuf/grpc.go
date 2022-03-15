@@ -56,10 +56,10 @@ func (c *grpcCodec) Encode(ctx context.Context, message remote.Message, out remo
 	var buf []byte
 	switch t := data.(type) {
 	case bprotoc.FastCodec:
-		buf, _ = out.Malloc(t.Size())
+		buf = make([]byte, t.Size())
 		t.FastWrite(buf)
 	case marshaler:
-		buf, _ = out.Malloc(t.Size())
+		buf = make([]byte, t.Size())
 		if _, err = t.MarshalTo(buf); err != nil {
 			return err
 		}
@@ -68,15 +68,9 @@ func (c *grpcCodec) Encode(ctx context.Context, message remote.Message, out remo
 		if err != nil {
 			return err
 		}
-		if err = writer.WriteData(buf); err != nil {
-			return err
-		}
 	case proto.Message:
 		buf, err = proto.Marshal(t)
 		if err != nil {
-			return err
-		}
-		if err = writer.WriteData(buf); err != nil {
 			return err
 		}
 	case protobufMsgCodec:
@@ -84,9 +78,9 @@ func (c *grpcCodec) Encode(ctx context.Context, message remote.Message, out remo
 		if err != nil {
 			return err
 		}
-		if err = writer.WriteData(buf); err != nil {
-			return err
-		}
+	}
+	if err = writer.WriteData(buf); err != nil {
+		return err
 	}
 	var hdrBuf [5]byte
 	binary.BigEndian.PutUint32(hdrBuf[1:5], uint32(len(buf)))

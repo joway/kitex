@@ -20,8 +20,6 @@ import (
 	"net"
 	"sync"
 
-	"github.com/bytedance/gopkg/lang/mcache"
-
 	"github.com/cloudwego/kitex/pkg/remote"
 )
 
@@ -84,8 +82,9 @@ func (b *buffer) WriteData(buf []byte) (err error) {
 }
 
 func (b *buffer) Malloc(n int) (buf []byte, err error) {
-	b.wbuf = mcache.Malloc(n)
-	return b.wbuf, nil
+	//b.wbuf = mcache.Malloc(n)
+	//return b.wbuf, nil
+	panic("implement me")
 }
 
 func (b *buffer) Flush() (err error) {
@@ -96,10 +95,7 @@ func (b *buffer) Flush() (err error) {
 func (b *buffer) Release(e error) (err error) {
 	b.rbuf = b.rbuf[:0]
 	b.whdr = nil
-	if b.wbuf != nil {
-		mcache.Free(b.wbuf)
-		b.wbuf = nil
-	}
+	b.wbuf = nil
 	bufferPool.Put(b)
 	return e
 }
