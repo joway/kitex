@@ -23,7 +23,6 @@ package grpc
 import (
 	"bytes"
 	"fmt"
-	"runtime"
 	"sync"
 	"sync/atomic"
 
@@ -527,7 +526,7 @@ func (l *loopyWriter) run(remoteAddr string) (err error) {
 		if _, err = l.processData(); err != nil {
 			return err
 		}
-		gosched := true
+		//gosched := true
 	hasdata:
 		for {
 			it, err := l.cbuf.get(false)
@@ -561,13 +560,13 @@ func (l *loopyWriter) run(remoteAddr string) (err error) {
 					atomic.AddInt64(&serverEmptyCnt, 1)
 				}
 			}
-			if gosched {
-				gosched = false
-				if l.framer.writer.offset < minBatchSize {
-					runtime.Gosched()
-					continue hasdata
-				}
-			}
+			//if gosched {
+			//	gosched = false
+			//	if l.framer.writer.offset < minBatchSize {
+			//		runtime.Gosched()
+			//		continue hasdata
+			//	}
+			//}
 			if l.side == clientSide {
 				atomic.AddInt64(&clientRunFlushCnt, 1)
 			} else {
