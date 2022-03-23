@@ -34,14 +34,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cloudwego/kitex/pkg/gofunc"
-	"github.com/cloudwego/kitex/pkg/klog"
-	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/metadata"
-	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/status"
 	"github.com/cloudwego/netpoll"
 	http2 "github.com/cloudwego/netpoll-http2"
 	"github.com/cloudwego/netpoll-http2/hpack"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/cloudwego/kitex/pkg/gofunc"
+	"github.com/cloudwego/kitex/pkg/klog"
+	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/metadata"
+	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/status"
 )
 
 var (
@@ -269,45 +270,99 @@ func newHTTP2Server(ctx context.Context, conn netpoll.Connection, config *Server
 // operateHeader takes action on the decoded headers.
 func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(*Stream), traceCtx func(context.Context, string) context.Context) (fatal bool) {
 	streamID := frame.Header().StreamID
-	state := &decodeState{
-		serverSide: true,
-	}
-	if err := state.decodeHeader(frame); err != nil {
-		if se, ok := status.FromError(err); ok {
-			t.controlBuf.put(&cleanupStream{
-				streamID: streamID,
-				rst:      true,
-				rstCode:  statusCodeConvTab[se.Code()],
-				onWrite:  func() {},
-			})
-		}
+
+	// frame.Truncated is set to true when framer detects that the current header
+	// list size hits MaxHeaderListSize limit.
+	if frame.Truncated {
+		t.controlBuf.put(&cleanupStream{
+			streamID: streamID,
+			rst:      true,
+			rstCode:  http2.ErrCodeFrameSize,
+			onWrite:  func() {},
+		})
 		return false
 	}
 
 	buf := newRecvBuffer()
 	s := &Stream{
-		id:             streamID,
-		st:             t,
-		buf:            buf,
-		fc:             &inFlow{limit: uint32(t.initialWindowSize)},
-		recvCompress:   state.data.encoding,
-		method:         state.data.method,
-		contentSubtype: state.data.contentSubtype,
+		id:  streamID,
+		st:  t,
+		buf: buf,
+		fc:  &inFlow{limit: uint32(t.initialWindowSize)},
 	}
+
+	var (
+		// If a gRPC Response-Headers has already been received, then it means
+		// that the peer is speaking gRPC and we are in gRPC mode.
+		isGRPC = false
+		mdata  = make(map[string][]string)
+		//httpMethod string
+		// headerError is set if an error is encountered while parsing the headers
+		headerError bool
+
+		timeoutSet bool
+		timeout    time.Duration
+	)
+
+	for _, hf := range frame.Fields {
+		switch hf.Name {
+		case "content-type":
+			contentSubtype, validContentType := ContentSubtype(hf.Value)
+			if !validContentType {
+				break
+			}
+			mdata[hf.Name] = append(mdata[hf.Name], hf.Value)
+			s.contentSubtype = contentSubtype
+			isGRPC = true
+		case "grpc-encoding":
+			s.recvCompress = hf.Value
+		//case ":method":
+		//	httpMethod = hf.Value
+		case ":path":
+			s.method = hf.Value
+		case "grpc-timeout":
+			timeoutSet = true
+			var err error
+			if timeout, err = decodeTimeout(hf.Value); err != nil {
+				headerError = true
+			}
+		default:
+			if isReservedHeader(hf.Name) && !isWhitelistedHeader(hf.Name) {
+				break
+			}
+			v, err := decodeMetadataHeader(hf.Name, hf.Value)
+			if err != nil {
+				headerError = true
+				klog.Warnf("Failed to decode metadata header (%q, %q): %v", hf.Name, hf.Value, err)
+				break
+			}
+			mdata[hf.Name] = append(mdata[hf.Name], v)
+		}
+	}
+
+	if !isGRPC || headerError {
+		t.controlBuf.put(&cleanupStream{
+			streamID: streamID,
+			rst:      true,
+			rstCode:  http2.ErrCodeProtocol,
+			onWrite:  func() {},
+		})
+		return false
+	}
+
 	if frame.StreamEnded() {
 		// s is just created by the caller. No lock needed.
 		s.state = streamReadDone
 	}
-	if state.data.timeoutSet {
-		s.ctx, s.cancel = context.WithTimeout(t.ctx, state.data.timeout)
+	if timeoutSet {
+		s.ctx, s.cancel = context.WithTimeout(t.ctx, timeout)
 	} else {
 		s.ctx, s.cancel = context.WithCancel(t.ctx)
 	}
 	// Attach the received metadata to the context.
-	if len(state.data.mdata) > 0 {
-		s.ctx = metadata.NewIncomingContext(s.ctx, state.data.mdata)
+	if len(mdata) > 0 {
+		s.ctx = metadata.NewIncomingContext(s.ctx, mdata)
 	}
-
 	t.mu.Lock()
 	if t.state != reachable {
 		t.mu.Unlock()

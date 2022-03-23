@@ -31,14 +31,14 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/cloudwego/kitex/pkg/klog"
-	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/codes"
-	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/status"
 	"github.com/cloudwego/netpoll"
 	"github.com/cloudwego/netpoll-http2"
 	"github.com/cloudwego/netpoll-http2/hpack"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/codes"
+	"github.com/cloudwego/kitex/pkg/remote/trans/nphttp2/status"
 )
 
 const (
@@ -102,52 +102,6 @@ var (
 		http.StatusGatewayTimeout: codes.Unavailable,
 	}
 )
-
-type parsedHeaderData struct {
-	encoding string
-	// statusGen caches the stream status received from the trailer the server
-	// sent.  Client side only.  Do not access directly.  After all trailers are
-	// parsed, use the status method to retrieve the status.
-	statusGen *status.Status
-	// rawStatusCode and rawStatusMsg are set from the raw trailer fields and are not
-	// intended for direct access outside of parsing.
-	rawStatusCode *int
-	rawStatusMsg  string
-	httpStatus    *int
-	// Server side only fields.
-	timeoutSet bool
-	timeout    time.Duration
-	method     string
-	// key-value metadata map from the peer.
-	mdata          map[string][]string
-	statsTags      []byte
-	statsTrace     []byte
-	contentSubtype string
-
-	// isGRPC field indicates whether the peer is speaking gRPC (otherwise HTTP).
-	//
-	// We are in gRPC mode (peer speaking gRPC) if:
-	// 	* We are client side and have already received a HEADER frame that indicates gRPC peer.
-	//  * The header contains valid  a content-type, i.e. a string starts with "application/grpc"
-	// And we should handle error specific to gRPC.
-	//
-	// Otherwise (i.e. a content-type string starts without "application/grpc", or does not exist), we
-	// are in HTTP fallback mode, and should handle error specific to HTTP.
-	isGRPC         bool
-	grpcErr        error
-	httpErr        error
-	contentTypeErr string
-}
-
-// decodeState configures decoding criteria and records the decoded data.
-type decodeState struct {
-	// whether decoding on server side or not
-	serverSide bool
-
-	// Records the states during HPACK decoding. It will be filled with info parsed from HTTP HEADERS
-	// frame once decodeHeader function has been invoked and returned.
-	data parsedHeaderData
-}
 
 // isReservedHeader checks whether hdr belongs to HTTP2 headers
 // reserved by gRPC protocol. Any other headers are classified as the
@@ -226,14 +180,6 @@ func contentType(contentSubtype string) string {
 	return baseContentType + "+" + contentSubtype
 }
 
-func (d *decodeState) status() *status.Status {
-	if d.data.statusGen == nil {
-		// No status-details were provided; generate status using code/msg.
-		d.data.statusGen = status.New(codes.Code(int32(*(d.data.rawStatusCode))), d.data.rawStatusMsg)
-	}
-	return d.data.statusGen
-}
-
 const binHdrSuffix = "-bin"
 
 func encodeBinHeader(v []byte) string {
@@ -263,164 +209,67 @@ func decodeMetadataHeader(k, v string) (string, error) {
 	return v, nil
 }
 
-func (d *decodeState) decodeHeader(frame *http2.MetaHeadersFrame) error {
-	// frame.Truncated is set to true when framer detects that the current header
-	// list size hits MaxHeaderListSize limit.
-	if frame.Truncated {
-		return status.New(codes.Internal, "peer header list size exceeded limit").Err()
+func decodeGRPCStatusDetails(rawDetails string) (*status.Status, error) {
+	v, err := decodeBinHeader(rawDetails)
+	if err != nil {
+		return nil, err
 	}
-
-	for _, hf := range frame.Fields {
-		d.processHeaderField(hf)
+	st := &spb.Status{}
+	if err = proto.Unmarshal(v, st); err != nil {
+		return nil, err
 	}
+	return status.FromProto(st), nil
+}
 
-	if d.data.isGRPC {
-		if d.data.grpcErr != nil {
-			return d.data.grpcErr
-		}
-		if d.serverSide {
-			return nil
-		}
-		if d.data.rawStatusCode == nil && d.data.statusGen == nil {
-			// gRPC status doesn't exist.
-			// Set rawStatusCode to be unknown and return nil error.
-			// So that, if the stream has ended this Unknown status
-			// will be propagated to the user.
-			// Otherwise, it will be ignored. In which case, status from
-			// a later trailer, that has StreamEnded flag set, is propagated.
-			code := int(codes.Unknown)
-			d.data.rawStatusCode = &code
-		}
-		return nil
+// ContentSubtype returns the content-subtype for the given content-type.  The
+// given content-type must be a valid content-type that starts with
+// "application/grpc". A content-subtype will follow "application/grpc" after a
+// "+" or ";". See
+// https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#requests for
+// more details.
+//
+// If contentType is not a valid content-type for gRPC, the boolean
+// will be false, otherwise true. If content-type == "application/grpc",
+// "application/grpc+", or "application/grpc;", the boolean will be true,
+// but no content-subtype will be returned.
+//
+// contentType is assumed to be lowercase already.
+func ContentSubtype(contentType string) (string, bool) {
+	if contentType == baseContentType {
+		return "", true
 	}
-
-	// HTTP fallback mode
-	if d.data.httpErr != nil {
-		return d.data.httpErr
+	if !strings.HasPrefix(contentType, baseContentType) {
+		return "", false
 	}
-
-	var (
-		code = codes.Internal // when header does not include HTTP status, return INTERNAL
-		ok   bool
-	)
-
-	if d.data.httpStatus != nil {
-		code, ok = HTTPStatusConvTab[*(d.data.httpStatus)]
-		if !ok {
-			code = codes.Unknown
-		}
+	// guaranteed since != baseContentType and has baseContentType prefix
+	switch contentType[len(baseContentType)] {
+	case '+', ';':
+		// this will return true for "application/grpc+" or "application/grpc;"
+		// which the previous validContentType function tested to be valid, so we
+		// just say that no content-subtype is specified in this case
+		return contentType[len(baseContentType)+1:], true
+	default:
+		return "", false
 	}
-
-	return status.New(code, d.constructHTTPErrMsg()).Err()
 }
 
 // constructErrMsg constructs error message to be returned in HTTP fallback mode.
 // Format: HTTP status code and its corresponding message + content-type error message.
-func (d *decodeState) constructHTTPErrMsg() string {
+func constructHTTPErrMsg(httpStatus *int, contentTypeErr string) string {
 	var errMsgs []string
-
-	if d.data.httpStatus == nil {
+	if httpStatus == nil {
 		errMsgs = append(errMsgs, "malformed header: missing HTTP status")
 	} else {
-		errMsgs = append(errMsgs, fmt.Sprintf("%s: HTTP status code %d", http.StatusText(*(d.data.httpStatus)), *d.data.httpStatus))
+		errMsgs = append(errMsgs, fmt.Sprintf("%s: HTTP status code %d", http.StatusText(*(httpStatus)), *httpStatus))
 	}
 
-	if d.data.contentTypeErr == "" {
+	if contentTypeErr == "" {
 		errMsgs = append(errMsgs, "transport: missing content-type field")
 	} else {
-		errMsgs = append(errMsgs, d.data.contentTypeErr)
+		errMsgs = append(errMsgs, contentTypeErr)
 	}
 
 	return strings.Join(errMsgs, "; ")
-}
-
-func (d *decodeState) addMetadata(k, v string) {
-	if d.data.mdata == nil {
-		d.data.mdata = make(map[string][]string)
-	}
-	d.data.mdata[k] = append(d.data.mdata[k], v)
-}
-
-func (d *decodeState) processHeaderField(f hpack.HeaderField) {
-	switch f.Name {
-	case "content-type":
-		contentSubtype, validContentType := contentSubtype(f.Value)
-		if !validContentType {
-			d.data.contentTypeErr = fmt.Sprintf("transport: received the unexpected content-type %q", f.Value)
-			return
-		}
-		d.data.contentSubtype = contentSubtype
-		// TODO: do we want to propagate the whole content-type in the metadata,
-		// or come up with a way to just propagate the content-subtype if it was set?
-		// ie {"content-type": "application/grpc+proto"} or {"content-subtype": "proto"}
-		// in the metadata?
-		d.addMetadata(f.Name, f.Value)
-		d.data.isGRPC = true
-	case "grpc-encoding":
-		d.data.encoding = f.Value
-	case "grpc-status":
-		code, err := strconv.Atoi(f.Value)
-		if err != nil {
-			d.data.grpcErr = status.Errorf(codes.Internal, "transport: malformed grpc-status: %v", err)
-			return
-		}
-		d.data.rawStatusCode = &code
-	case "grpc-message":
-		d.data.rawStatusMsg = decodeGrpcMessage(f.Value)
-	case "grpc-status-details-bin":
-		v, err := decodeBinHeader(f.Value)
-		if err != nil {
-			d.data.grpcErr = status.Errorf(codes.Internal, "transport: malformed grpc-status-details-bin: %v", err)
-			return
-		}
-		s := &spb.Status{}
-		if err := proto.Unmarshal(v, s); err != nil {
-			d.data.grpcErr = status.Errorf(codes.Internal, "transport: malformed grpc-status-details-bin: %v", err)
-			return
-		}
-		d.data.statusGen = status.FromProto(s)
-	case "grpc-timeout":
-		d.data.timeoutSet = true
-		var err error
-		if d.data.timeout, err = decodeTimeout(f.Value); err != nil {
-			d.data.grpcErr = status.Errorf(codes.Internal, "transport: malformed time-out: %v", err)
-		}
-	case ":path":
-		d.data.method = f.Value
-	case ":status":
-		code, err := strconv.Atoi(f.Value)
-		if err != nil {
-			d.data.httpErr = status.Errorf(codes.Internal, "transport: malformed http-status: %v", err)
-			return
-		}
-		d.data.httpStatus = &code
-	case "grpc-tags-bin":
-		v, err := decodeBinHeader(f.Value)
-		if err != nil {
-			d.data.grpcErr = status.Errorf(codes.Internal, "transport: malformed grpc-tags-bin: %v", err)
-			return
-		}
-		d.data.statsTags = v
-		d.addMetadata(f.Name, string(v))
-	case "grpc-trace-bin":
-		v, err := decodeBinHeader(f.Value)
-		if err != nil {
-			d.data.grpcErr = status.Errorf(codes.Internal, "transport: malformed grpc-trace-bin: %v", err)
-			return
-		}
-		d.data.statsTrace = v
-		d.addMetadata(f.Name, string(v))
-	default:
-		if isReservedHeader(f.Name) && !isWhitelistedHeader(f.Name) {
-			break
-		}
-		v, err := decodeMetadataHeader(f.Name, f.Value)
-		if err != nil {
-			klog.Errorf("Failed to decode metadata header (%q, %q): %v", f.Name, f.Value, err)
-			return
-		}
-		d.addMetadata(f.Name, v)
-	}
 }
 
 type timeoutUnit uint8
