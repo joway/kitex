@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 
 	"github.com/bytedance/gopkg/cloud/metainfo"
+
 	"github.com/cloudwego/kitex/client/callopt"
 	"github.com/cloudwego/kitex/internal/client"
 	"github.com/cloudwego/kitex/pkg/acl"
@@ -161,12 +162,13 @@ func (kc *kClient) initContext() context.Context {
 func (kc *kClient) initProxy() error {
 	if kc.opt.Proxy != nil {
 		cfg := proxy.Config{
-			ServerInfo:   kc.opt.Svr,
-			Resolver:     kc.opt.Resolver,
-			Balancer:     kc.opt.Balancer,
-			Pool:         kc.opt.RemoteOpt.ConnPool,
-			FixedTargets: kc.opt.Targets,
-			RPCConfig:    kc.opt.Configs,
+			ServerInfo:             kc.opt.Svr,
+			Resolver:               kc.opt.Resolver,
+			Balancer:               kc.opt.Balancer,
+			Pool:                   kc.opt.RemoteOpt.ConnPool,
+			EnableConnPoolReporter: kc.opt.RemoteOpt.EnableConnPoolReporter,
+			FixedTargets:           kc.opt.Targets,
+			RPCConfig:              kc.opt.Configs,
 		}
 		if err := kc.opt.Proxy.Configure(&cfg); err != nil {
 			return err
