@@ -29,10 +29,10 @@ type weightedRandomPicker struct {
 	weightSum int
 }
 
-func newWeightedRandomPickerWithSum(instances []discovery.Instance, weightSum int) Picker {
+func newWeightedRandomPicker(instances []discovery.Instance, totalWeight int) Picker {
 	return &weightedRandomPicker{
 		instances: instances,
-		weightSum: weightSum,
+		weightSum: totalWeight,
 	}
 }
 

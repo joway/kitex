@@ -38,3 +38,13 @@ type Rebalancer interface {
 	Rebalance(discovery.Change)
 	Delete(discovery.Change)
 }
+
+type Releaser interface {
+	Release(err error)
+}
+
+func Release(obj interface{}, err error) {
+	if r, ok := obj.(Releaser); ok {
+		r.Release(err)
+	}
+}

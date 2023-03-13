@@ -137,9 +137,9 @@ type RoundRobinPicker struct {
 }
 
 func newRoundRobinPicker(instances []discovery.Instance) Picker {
-	size := uint64(len(instances))
+	size := len(instances)
 	return &RoundRobinPicker{
-		size:      size,
+		size:      uint64(size),
 		instances: instances,
 		iterator:  newRandomRound(),
 	}

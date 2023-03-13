@@ -119,7 +119,7 @@ func TestConsistPicker_Next_NoCache(t *testing.T) {
 
 	cb := NewConsistBalancer(opt)
 	picker := cb.GetPicker(e)
-	test.Assert(t, picker.Next(context.TODO(), nil) == ins)
+	test.Assert(t, picker.Next(context.TODO(), nil).Address() == ins.Address(), ins)
 	test.Assert(t, picker.Next(context.TODO(), nil) == nil)
 }
 
@@ -143,13 +143,13 @@ func TestConsistPicker_Next_NoCache_Consist(t *testing.T) {
 	ins := picker.Next(context.TODO(), nil)
 	for i := 0; i < 100; i++ {
 		picker := cb.GetPicker(e)
-		test.Assert(t, picker.Next(context.TODO(), nil) == ins)
+		test.Assert(t, picker.Next(context.TODO(), nil).Address() == ins.Address())
 	}
 
 	cb = NewConsistBalancer(opt)
 	for i := 0; i < 100; i++ {
 		picker := cb.GetPicker(e)
-		test.Assert(t, picker.Next(context.TODO(), nil) == ins)
+		test.Assert(t, picker.Next(context.TODO(), nil).Address() == ins.Address())
 	}
 }
 
@@ -167,7 +167,7 @@ func TestConsistPicker_Next_Cache(t *testing.T) {
 
 	cb := NewConsistBalancer(opt)
 	picker := cb.GetPicker(e)
-	test.Assert(t, picker.Next(context.TODO(), nil) == ins)
+	test.Assert(t, picker.Next(context.TODO(), nil).Address() == ins.Address())
 }
 
 func TestConsistPicker_Next_Cache_Consist(t *testing.T) {
@@ -194,13 +194,13 @@ func TestConsistPicker_Next_Cache_Consist(t *testing.T) {
 	ins := picker.Next(context.TODO(), nil)
 	for i := 0; i < 100; i++ {
 		picker := cb.GetPicker(e)
-		test.Assert(t, picker.Next(context.TODO(), nil) == ins)
+		test.Assert(t, picker.Next(context.TODO(), nil).Address() == ins.Address())
 	}
 
 	cb = NewConsistBalancer(opt)
 	for i := 0; i < 100; i++ {
 		picker := cb.GetPicker(e)
-		test.Assert(t, picker.Next(context.TODO(), nil) == ins)
+		test.Assert(t, picker.Next(context.TODO(), nil).Address() == ins.Address())
 	}
 }
 

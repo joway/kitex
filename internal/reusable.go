@@ -20,3 +20,9 @@ package internal
 type Reusable interface {
 	Recycle()
 }
+
+func Recycle(obj interface{}) {
+	if r, ok := obj.(Reusable); ok {
+		r.Recycle()
+	}
+}

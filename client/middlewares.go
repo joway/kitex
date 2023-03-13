@@ -30,6 +30,7 @@ import (
 	"github.com/cloudwego/kitex/pkg/event"
 	"github.com/cloudwego/kitex/pkg/kerrors"
 	"github.com/cloudwego/kitex/pkg/klog"
+	"github.com/cloudwego/kitex/pkg/loadbalance"
 	"github.com/cloudwego/kitex/pkg/loadbalance/lbcache"
 	"github.com/cloudwego/kitex/pkg/proxy"
 	"github.com/cloudwego/kitex/pkg/remote"
@@ -118,10 +119,10 @@ func newResolveMWBuilder(lbf *lbcache.BalancerFactory) endpoint.MiddlewareBuilde
 						remote.SetInstance(ins)
 						// TODO: generalize retry strategy
 						err = next(ctx, request, response)
+						loadbalance.Release(ins, err) // release instance
 					}
-					if r, ok := picker.(internal.Reusable); ok {
-						r.Recycle()
-					}
+					internal.Recycle(picker)
+
 					if err == nil {
 						return nil
 					}

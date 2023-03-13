@@ -28,6 +28,8 @@ import (
 const (
 	lbKindRoundRobin = 1
 	lbKindRandom     = 2
+	lbKindLeastLoad  = 3
+	lbKindPeakEWMA   = 4
 )
 
 type weightedBalancer struct {
@@ -53,6 +55,18 @@ func NewWeightedRandomBalancer() Loadbalancer {
 	return lb
 }
 
+// NewWeightedLeastLoadBalancer creates a loadbalancer using weighted-least-load algorithm.
+func NewWeightedLeastLoadBalancer() Loadbalancer {
+	lb := &weightedBalancer{kind: lbKindLeastLoad}
+	return lb
+}
+
+// NewWeightedPeakEWMABalancer creates a loadbalancer using weighted-peak-ewma algorithm.
+func NewWeightedPeakEWMABalancer() Loadbalancer {
+	lb := &weightedBalancer{kind: lbKindPeakEWMA}
+	return lb
+}
+
 // GetPicker implements the Loadbalancer interface.
 func (wb *weightedBalancer) GetPicker(e discovery.Result) Picker {
 	if !e.Cacheable {
@@ -72,24 +86,22 @@ func (wb *weightedBalancer) GetPicker(e discovery.Result) Picker {
 }
 
 func (wb *weightedBalancer) createPicker(e discovery.Result) (picker Picker) {
-	instances := make([]discovery.Instance, len(e.Instances)) // removed zero weight instances
-	weightSum := 0
+	instances := make([]discovery.Instance, 0, len(e.Instances))
 	balance := true
-	cnt := 0
-	for idx, instance := range e.Instances {
+	weightSum := 0
+	for i := 0; i < len(e.Instances); i++ {
+		instance := e.Instances[i]
 		weight := instance.Weight()
 		if weight <= 0 {
-			klog.Warnf("KITEX: invalid weight, weight=%d instance=%s", weight, e.Instances[idx].Address())
+			klog.Warnf("KITEX: invalid weight, weight=%d instance=%s", weight, instance.Address())
 			continue
 		}
-		weightSum += weight
-		instances[cnt] = instance
-		if cnt > 0 && instances[cnt-1].Weight() != weight {
+		if balance && i > 0 && weight != e.Instances[i-1].Weight() {
 			balance = false
 		}
-		cnt++
+		weightSum += weight
+		instances = append(instances, instance)
 	}
-	instances = instances[:cnt]
 	if len(instances) == 0 {
 		return new(DummyPicker)
 	}
@@ -101,12 +113,16 @@ func (wb *weightedBalancer) createPicker(e discovery.Result) (picker Picker) {
 		} else {
 			picker = newWeightedRoundRobinPicker(instances)
 		}
-	default: // random
+	case lbKindRandom:
 		if balance {
 			picker = newRandomPicker(instances)
 		} else {
-			picker = newWeightedRandomPickerWithSum(instances, weightSum)
+			picker = newWeightedRandomPicker(instances, weightSum)
 		}
+	case lbKindLeastLoad:
+		picker = newWeightedLeastLoadPicker(instances, weightSum)
+	case lbKindPeakEWMA:
+		picker = newPeakEWMAPicker(instances, weightSum)
 	}
 	return picker
 }
@@ -131,7 +147,12 @@ func (wb *weightedBalancer) Name() string {
 	switch wb.kind {
 	case lbKindRoundRobin:
 		return "weight_round_robin"
-	default:
+	case lbKindRandom:
 		return "weight_random"
+	case lbKindLeastLoad:
+		return "weight_least_load"
+	case lbKindPeakEWMA:
+		return "weight_peak_ewma"
 	}
+	return ""
 }

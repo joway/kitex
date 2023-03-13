@@ -36,6 +36,8 @@ type balancerTestcase struct {
 var balancerTestcases = []*balancerTestcase{
 	{Name: "weight_round_robin", factory: NewWeightedRoundRobinBalancer},
 	{Name: "weight_random", factory: NewWeightedRandomBalancer},
+	{Name: "weight_least_load", factory: NewWeightedLeastLoadBalancer},
+	{Name: "weight_peak_ewma", factory: NewWeightedPeakEWMABalancer},
 }
 
 func TestWeightedBalancer_GetPicker(t *testing.T) {
@@ -49,18 +51,21 @@ func TestWeightedBalancer_GetPicker(t *testing.T) {
 			test.Assert(t, ok && dp != nil)
 
 			// invalid
+			insList := []discovery.Instance{
+				discovery.NewInstance("tcp", "addr1", -10, nil),
+				discovery.NewInstance("tcp", "addr2", -20, nil),
+			}
 			picker = balancer.GetPicker(discovery.Result{
-				Instances: []discovery.Instance{
-					discovery.NewInstance("tcp", "addr1", -10, nil),
-					discovery.NewInstance("tcp", "addr2", -20, nil),
-				},
+				Instances: insList,
 			})
 			test.Assert(t, picker != nil)
 			dp, ok = picker.(*DummyPicker)
 			test.Assert(t, ok && dp != nil)
+			test.Assert(t, len(insList) == 2 &&
+				insList[0].Address().String() == "addr1" && insList[1].Address().String() == "addr2", insList)
 
 			// one instance
-			insList := []discovery.Instance{
+			insList = []discovery.Instance{
 				discovery.NewInstance("tcp", "addr1", 10, nil),
 			}
 			picker = balancer.GetPicker(discovery.Result{

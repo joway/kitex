@@ -77,9 +77,9 @@ func TestWeightedRoundRobinPicker(t *testing.T) {
 	}
 	t.Logf("doubleAccess: %d", doubleAccess)
 	test.Assert(t, len(accessMap) == len(insList), accessMap)
-	test.Assert(t, accessMap["addr1"] == round/6, accessMap)
-	test.Assert(t, accessMap["addr2"] == round/6*2, accessMap)
-	test.Assert(t, accessMap["addr3"] == round/6*3, accessMap)
+	test.Assert(t, accessMap["addr1"] == round/6, accessMap, round)
+	test.Assert(t, accessMap["addr2"] == round/6*2, accessMap, round)
+	test.Assert(t, accessMap["addr3"] == round/6*3, accessMap, round)
 }
 
 func TestWeightedRoundRobinPickerLargeInstances(t *testing.T) {
