@@ -81,7 +81,7 @@ func newClientConn(ctx context.Context, tr grpc.ClientTransport, addr string) (*
 		Host: host,
 		// grpc method format /package.Service/Method
 		Method:       fmt.Sprintf("/%s/%s", svcName, ri.Invocation().MethodName()),
-		SendCompress: remote.GetSendCompressor(ri),
+		SendCompress: remote.GetSendCompressor(ctx),
 	})
 	if err != nil {
 		return nil, err
