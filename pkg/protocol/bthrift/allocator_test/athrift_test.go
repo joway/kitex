@@ -2,7 +2,6 @@ package allocator_test
 
 import (
 	"fmt"
-	"reflect"
 	"testing"
 
 	tt "github.com/cloudwego/kitex/internal/test"
@@ -102,10 +101,16 @@ func init() {
 			Double1:   &double1,
 		},
 	}
+	multiLargeStringReq := &test.FullStruct{
+		NestMap: map[string][]string{
+			"large": {largeDesc, largeDesc, largeDesc, largeDesc, largeDesc, largeDesc},
+		},
+	}
 	benchcases = []benchcase{
 		{Name: "Simple", req: simpleReq},
 		{Name: "Complex", req: complexReq},
 		{Name: "LargeString", req: largeStringReq},
+		{Name: "MultiLargeString", req: multiLargeStringReq},
 	}
 	_, _, _ = simpleReq, complexReq, largeStringReq
 }
@@ -134,20 +139,18 @@ func BenchmarkAllocatorFastRead(b *testing.B) {
 		var req *test.FullStruct // we should make req escape to heap
 		b.Run(bc.Name, func(b *testing.B) {
 			buf := fastthrift.FastMarshal(bc.req)
-			var structSize = int(reflect.TypeOf(test.FullStruct{}).Size())
-			b.Logf("Struct Size: %d, Buffer Size: %d", structSize, len(buf))
 
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				ac := allocator.NewAllocator(len(buf) + structSize)
-				req = allocator.New[test.FullStruct](ac)
-				req.InitDefault()
+				req = test.NewFullStruct()
+				ac := allocator.NewAllocator(len(buf))
 				bp := bthrift.NewABinaryProtocol(ac)
 				_, err := req.FastRead(bp, buf)
 				if err != nil {
 					b.Fatal("unmarshal failed", err)
 				}
+				ac.Release()
 			}
 		})
 		_ = req

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"unsafe"
@@ -13,18 +14,18 @@ import (
 )
 
 type testObject struct {
-	Int         int
-	String      string
-	Child       *testSubObject
-	StructList  []testSubObject
-	StringList  []string
-	PointerList []*testSubObject
-	PointerMap  map[string]*testSubObject
+	Int         int                       // 8
+	String      string                    // 16
+	Child       *testSubObject            // 8
+	StructList  []testSubObject           // 24
+	StringList  []string                  // 24
+	PointerList []*testSubObject          // 24
+	PointerMap  map[string]*testSubObject // 8, *hmap
 }
 
 type testSubObject struct {
-	Int    int
-	String string
+	Int    int    // 8
+	String string // 16
 }
 
 func makeTestString(size int) string {
@@ -149,6 +150,43 @@ func TestBufferReuse(t *testing.T) {
 		test.Assert(t, buffer != nil)
 		test.DeepEqual(t, len(buffer), 1024)
 	}
+}
+
+func TestRuntimeGC(t *testing.T) {
+	var obj *testObject
+	var wg sync.WaitGroup
+	var finalized int32
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		size := unsafe.Sizeof(testObject{})
+		test.DeepEqual(t, size, uintptr(112))
+		buf := make([]byte, size)
+		bhdr := (*sliceHeader)(unsafe.Pointer(&buf))
+		memclrNoHeapPointers(bhdr.Data, uintptr(bhdr.Cap))
+		obj = (*testObject)(bhdr.Data)
+		obj.PointerMap = map[string]*testSubObject{"a": {Int: 123}}
+		runtime.SetFinalizer(&buf[0], func(x *byte) {
+			//test.Assert(t, x.PointerMap != nil, x.PointerMap)
+			//test.DeepEqual(t, x.PointerMap["a"].Int, 123)
+			t.Logf("finalized *testObject")
+			atomic.StoreInt32(&finalized, 1)
+		})
+	}()
+	wg.Wait()
+	for i := 0; i < 10; i++ {
+		runtime.GC()
+	}
+	t.Logf("access obj map")
+	test.DeepEqual(t, obj.PointerMap["a"].Int, 123)
+	mmap := obj.PointerMap
+	//test.DeepEqual(t, mmap["a"].Int, 123)
+	obj = nil
+	t.Logf("set obj to nil")
+	for atomic.LoadInt32(&finalized) == 0 {
+		runtime.GC()
+	}
+	test.DeepEqual(t, mmap["a"].Int, 123)
 }
 
 func TestAllocator(t *testing.T) {
