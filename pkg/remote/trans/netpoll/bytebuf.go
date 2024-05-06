@@ -23,13 +23,11 @@ import (
 	"github.com/cloudwego/netpoll"
 
 	"github.com/cloudwego/kitex/pkg/remote"
+	"github.com/cloudwego/kitex/pkg/remote/trans/netpoll/bytebuf"
 )
 
-var bytebufPool sync.Pool
-
-func init() {
-	bytebufPool.New = newNetpollByteBuffer
-}
+// The original implementation is moved to the sub package bytebuf.
+// This file now only contains existing exported symbols to keep the compatibility.
 
 // NewReaderByteBuffer creates a new remote.ByteBuffer using the given netpoll.ZeroCopyReader.
 func NewReaderByteBuffer(r netpoll.Reader) remote.ByteBuffer {

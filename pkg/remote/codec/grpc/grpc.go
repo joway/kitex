@@ -44,13 +44,10 @@ type marshaler interface {
 	Size() int
 }
 
-type protobufV2MsgCodec interface {
-	XXX_Unmarshal(b []byte) error
-	XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
-}
-
 type grpcCodec struct {
-	ThriftCodec remote.PayloadCodec
+	ThriftCodec         remote.PayloadCodec
+	thriftStructCodec   remote.StructCodec
+	protobufStructCodec remote.StructCodec
 }
 
 type CodecOption func(c *grpcCodec)
@@ -68,7 +65,17 @@ func NewGRPCCodec(opts ...CodecOption) remote.Codec {
 		opt(codec)
 	}
 	if !thrift.IsThriftCodec(codec.ThriftCodec) {
-		codec.ThriftCodec = thrift.NewThriftCodec()
+		if c, err := remote.GetPayloadCodecByCodecType(serviceinfo.Thrift); err == nil {
+			codec.ThriftCodec = c
+		} else {
+			codec.ThriftCodec = thrift.NewThriftCodec()
+		}
+	}
+	codec.thriftStructCodec = codec.ThriftCodec.(remote.StructCodec)
+	if c, err := remote.GetStructCodecByCodecType(serviceinfo.Protobuf); err == nil {
+		codec.protobufStructCodec = c
+	} else {
+		codec.protobufStructCodec = protobuf.NewProtobufCodec().(remote.StructCodec)
 	}
 	return codec
 }
@@ -100,7 +107,7 @@ func (c *grpcCodec) Encode(ctx context.Context, message remote.Message, out remo
 
 	switch message.ProtocolInfo().CodecType {
 	case serviceinfo.Thrift:
-		payload, err = thrift.MarshalThriftData(ctx, c.ThriftCodec, message.Data())
+		payload, err = c.thriftStructCodec.Serialize(ctx, message.Data())
 	case serviceinfo.Protobuf:
 		switch t := message.Data().(type) {
 		case fastpb.Writer:
@@ -127,7 +134,7 @@ func (c *grpcCodec) Encode(ctx context.Context, message remote.Message, out remo
 			if _, err = t.MarshalTo(payload); err != nil {
 				return err
 			}
-		case protobufV2MsgCodec:
+		case protobuf.ProtobufV2MsgCodec:
 			payload, err = t.XXX_Marshal(nil, true)
 		case proto.Message:
 			payload, err = proto.Marshal(t)
@@ -185,10 +192,9 @@ func (c *grpcCodec) Decode(ctx context.Context, message remote.Message, in remot
 		return err
 	}
 	message.SetPayloadLen(len(d))
-	data := message.Data()
 	switch message.ProtocolInfo().CodecType {
 	case serviceinfo.Thrift:
-		return thrift.UnmarshalThriftData(ctx, c.ThriftCodec, "", d, message.Data())
+		return c.thriftStructCodec.Deserialize(ctx, message.Data(), d)
 	case serviceinfo.Protobuf:
 		if t, ok := data.(fastpb.Reader); ok {
 			if len(d) == 0 {
